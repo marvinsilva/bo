@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SATO - Sistema de Análise e Triagem de Ocorrências | PCRS</title>
+
+  <!-- CDNs: Tailwind CSS, PDF.js, JSZip e Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      background-color: #0f1115;
+      color: #e2e8f0;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .gold-accent { color: #d4af37; }
+    .gold-bg { background-color: #d4af37; }
+    .gold-border { border-color: #d4af37; }
+    .dark-card {
+      background-color: #161a23;
+      border: 1px solid #262c3a;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #2a3245;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- CABEÇALHO SÓBRIO & INVESTIGATIVO -->
+  <header class="border-b border-gray-800 bg-[#12151e] px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <!-- Escudo / Logo PCRS Simplificado -->
+      <div class="w-10 h-10 rounded bg-gray-900 border border-amber-500/40 flex items-center justify-center font-bold text-amber-500 text-xs shadow-md">
+        PCRS
+      </div>
+      <div>
+        <h1 class="text-lg font-bold tracking-wider text-slate-100 flex items-center gap-2">
+          SATO <span class="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">Módulo de Inteligência</span>
+        </h1>
+        <p class="text-xs text-slate-400">Polícia Civil do Estado do Rio Grande do Sul — Triagem e Cruzamento de BOs</p>
+      </div>
+    </div>
+    <div id="statsHeader" class="hidden md:flex gap-6 text-xs">
+      <div>
+        <span class="text-slate-400 block">BOs Carregados:</span>
+        <span id="totalBoCount" class="text-sm font-bold text-slate-200">0</span>
+      </div>
+      <div>
+        <span class="text-slate-400 block">Categorias:</span>
+        <span id="totalCategoriesCount" class="text-sm font-bold text-slate-200">0</span>
+      </div>
+      <div>
+        <span class="text-slate-400 block">Vínculos/Padrões:</span>
+        <span id="totalClustersCount" class="text-sm font-bold text-amber-400">0</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col gap-6">
+
+    <!-- ÁREA DE UPLOAD -->
+    <div id="dropZone" class="dark-card rounded-lg p-8 border-2 border-dashed border-slate-700 hover:border-amber-500/50 transition-colors text-center cursor-pointer relative">
+      <input type="file" id="fileInput" multiple accept=".pdf,.zip" class="hidden" />
+      <div class="flex flex-col items-center justify-center gap-3">
+        <div class="p-3 bg-slate-800/80 rounded-full text-amber-400">
+          <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+        </div>
+        <div>
+          <p class="text-base font-semibold text-slate-200">Arraste os arquivos dos BOs aqui (PDFs ou arquivos .ZIP)</p>
+          <p class="text-xs text-slate-400 mt-1">Suporta envio múltiplo simultâneo. O processamento é feito localmente no seu navegador.</p>
+        </div>
+        <button onclick="document.getElementById('fileInput').click()" class="mt-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded border border-slate-600 transition">
+          Selecionar Arquivos do Computador
+        </button>
+      </div>
+    </div>
+
+    <!-- PROGRESSO DE PROCESSAMENTO -->
+    <div id="progressContainer" class="hidden dark-card rounded-lg p-4">
+      <div class="flex justify-between text-xs mb-2">
+        <span id="progressStatus" class="text-slate-300 font-medium">Extraindo dados dos arquivos...</span>
+        <span id="progressPercent" class="text-amber-400 font-bold">0%</span>
+      </div>
+      <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+        <div id="progressBar" class="bg-amber-500 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- PAINEL DE RESULTADOS -->
+    <div id="resultsDashboard" class="hidden flex-1 flex flex-col gap-6">
+
+      <!-- BARRA DE PESQUISA E FILTROS -->
+      <div class="flex flex-col md:flex-row gap-4 items-center justify-between">
+        <!-- ABAS DE TIPOS DE CRIME (FATO) -->
+        <div id="crimeTabs" class="flex gap-2 overflow-x-auto custom-scrollbar w-full md:w-auto pb-2 md:pb-0">
+          <!-- Gerado dinamicamente -->
+        </div>
+
+        <!-- CAMPO DE BUSCA -->
+        <div class="relative w-full md:w-72">
+          <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+          <input type="text" id="searchInput" placeholder="Buscar por CPF, telefone, chave PIX, nome..." 
+            class="w-full bg-slate-900 border border-slate-700 rounded-md pl-9 pr-4 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+        </div>
+      </div>
+
+      <!-- LISTA DE PASTA E GRUPOS DE VÍNCULO -->
+      <div id="crimeContent" class="space-y-6">
+        <!-- Conteúdo dos BOs e agrupamentos gerados dinamicamente -->
+      </div>
+    </div>
+  </main>
+
+  <footer class="border-t border-slate-800 py-3 text-center text-xs text-slate-500">
+    SATO v1.0 — Módulo Local de Análise de Ocorrências Policiais
+  </footer>
+
+  <!-- SCRIPT DE PROCESSAMENTO -->
+  <script>
+    // Inicialização do PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let parsedBOs = [];
+    let currentTab = 'TODOS';
+
+    // Elementos DOM
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressStatus = document.getElementById('progressStatus');
+    const progressPercent = document.getElementById('progressPercent');
+    const resultsDashboard = document.getElementById('resultsDashboard');
+
+    // Eventos Drag and Drop
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length) handleFiles(files);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length) handleFiles(files);
+    });
+
+    document.getElementById('searchInput').addEventListener('input', () => {
+      renderDashboard();
+    });
+
+    async function handleFiles(files) {
+      let pdfFiles = [];
+      progressContainer.classList.remove('hidden');
+      updateProgress(0, 'Identificando arquivos...');
+
+      for (const file of files) {
+        if (file.name.endsWith('.pdf')) {
+          pdfFiles.push(file);
+        } else if (file.name.endsWith('.zip')) {
+          try {
+            const zip = await JSZip.loadAsync(file);
+            for (const filename of Object.keys(zip.files)) {
+              if (filename.endsWith('.pdf') && !filename.startsWith('__MACOSX/')) {
+                const blob = await zip.files[filename].async('blob');
+                pdfFiles.push(new File([blob], filename, { type: 'application/pdf' }));
+              }
+            }
+          } catch (err) {
+            console.error("Erro ao descompactar ZIP:", err);
+          }
+        }
+      }
+
+      if (pdfFiles.length === 0) {
+        alert('Nenhum arquivo PDF válido foi encontrado.');
+        progressContainer.classList.add('hidden');
+        return;
+      }
+
+      parsedBOs = [];
+      let processed = 0;
+
+      for (const file of pdfFiles) {
+        processed++;
+        const percent = Math.round((processed / pdfFiles.length) * 100);
+        updateProgress(percent, `Lendo BO ${processed} de ${pdfFiles.length}: ${file.name}`);
+
+        try {
+          const boData = await parsePDFBO(file);
+          if (boData) parsedBOs.push(boData);
+        } catch (e) {
+          console.error("Erro no processamento do arquivo " + file.name, e);
+        }
+      }
+
+      updateProgress(100, 'Processamento concluído!');
+      setTimeout(() => {
+        progressContainer.classList.add('hidden');
+        resultsDashboard.classList.remove('hidden');
+        document.getElementById('statsHeader').classList.remove('hidden');
+        renderDashboard();
+      }, 400);
+    }
+
+    function updateProgress(percent, text) {
+      progressBar.style.width = `${percent}%`;
+      progressPercent.innerText = `${percent}%`;
+      progressStatus.innerText = text;
+    }
+
+    // Leitura e Extração de Entidades do PDF do BO da PCRS
+    async function parsePDFBO(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = "";
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(" ");
+        fullText += pageText + "\n";
+      }
+
+      // 1. Extração do Número do BO
+      const numMatch = fullText.match(/Ocorrência Policial n[°º]?\s*([\d\/\w-]+)/i) || fullText.match(/Ano:\s*(\d+)\s*Número:\s*(\d+)/i);
+      let boNumber = "N/I";
+      if (numMatch) {
+        boNumber = numMatch[1] ? numMatch[1] : `${numMatch[2]}/${numMatch[1]}`;
+      }
+
+      // 2. Extração do Fato (Tipo de Crime)
+      const fatoMatch = fullText.match(/Fato:\s*([\d\.]+\s*-\s*[A-ZÀ-Ú\s]+)/i) || fullText.match(/Fato:\s*([A-ZÀ-Ú\s]+)/i);
+      let fato = "OUTROS / NÃO ESPECIFICADO";
+      if (fatoMatch) {
+        fato = fatoMatch[1].trim().toUpperCase();
+      }
+
+      // 3. Extração da Data do Fato / Registro
+      const dataMatch = fullText.match(/Data Registro:\s*([\d\/\s:às]+)/i);
+      const dataRegistro = dataMatch ? dataMatch[1].trim() : "Data Indisponível";
+
+      // 4. Extração do Histórico
+      let historico = "";
+      const histMatch = fullText.match(/Histórico([\s\S]*?)(Órgão de Destino|Participante:|ROCP)/i);
+      if (histMatch) {
+        historico = histMatch[1].trim();
+      } else {
+        historico = fullText;
+      }
+
+      // 5. Extração de Entidades-Chave (RegEx)
+      const cpfs = Array.from(new Set(fullText.match(/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g) || []));
+      const phones = Array.from(new Set(fullText.match(/\b(?:\(?\d{2}\)?\s?)?(?:9?\d{4}[-\s]?\d{4})\b/g) || []))
+        .filter(p => p.length >= 8);
+      
+      // Identificar menções a PIX / Valores no histórico
+      const pixMatches = Array.from(new Set(historico.match(/\b(?:pix|reserva|transferência|valor|r\$)\s*(?:de\s*)?(?:R\$\s*)?(\d+[\d\.,]*)/gi) || []));
+
+      // Nomes de Vítimas / Participantes
+      const names = [];
+      const nameMatches = fullText.matchAll(/Nome:\s*([A-ZÀ-Ú\s]{3,40})/g);
+      for (const m of nameMatches) {
+        const name = m[1].trim();
+        if (name && !name.includes("ESTADO") && !name.includes("POLÍCIA")) {
+          names.push(name);
+        }
+      }
+
+      return {
+        filename: file.name,
+        boNumber,
+        fato,
+        dataRegistro,
+        historico,
+        cpfs,
+        phones,
+        pixMatches,
+        names: Array.from(new Set(names)),
+        fullText
+      };
+    }
+
+    // Renderização do Dashboard e Agrupamento Por Vínculos
+    function renderDashboard() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+
+      // Atualizar contadores
+      document.getElementById('totalBoCount').innerText = parsedBOs.length;
+
+      // Agrupar por Tipo de Fato (Crime)
+      const fatoMap = {};
+      parsedBOs.forEach(bo => {
+        // Filtragem por busca
+        if (searchTerm) {
+          const matchSearch = bo.boNumber.toLowerCase().includes(searchTerm) ||
+                              bo.fato.toLowerCase().includes(searchTerm) ||
+                              bo.historico.toLowerCase().includes(searchTerm) ||
+                              bo.phones.some(p => p.includes(searchTerm)) ||
+                              bo.cpfs.some(c => c.includes(searchTerm)) ||
+                              bo.names.some(n => n.toLowerCase().includes(searchTerm));
+          if (!matchSearch) return;
+        }
+
+        if (!fatoMap[bo.fato]) fatoMap[bo.fato] = [];
+        fatoMap[bo.fato].push(bo);
+      });
+
+      const categories = Object.keys(fatoMap);
+      document.getElementById('totalCategoriesCount').innerText = categories.length;
+
+      // Renderizar Abas
+      const crimeTabsContainer = document.getElementById('crimeTabs');
+      crimeTabsContainer.innerHTML = '';
+
+      const allBtn = document.createElement('button');
+      allBtn.className = `px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap border transition ${currentTab === 'TODOS' ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'}`;
+      allBtn.innerText = `Todos (${parsedBOs.length})`;
+      allBtn.onclick = () => { currentTab = 'TODOS'; renderDashboard(); };
+      crimeTabsContainer.appendChild(allBtn);
+
+      categories.forEach(fato => {
+        const btn = document.createElement('button');
+        btn.className = `px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap border transition ${currentTab === fato ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'}`;
+        btn.innerText = `${fato} (${fatoMap[fato].length})`;
+        btn.onclick = () => { currentTab = fato; renderDashboard(); };
+        crimeTabsContainer.appendChild(btn);
+      });
+
+      // Filtrar por aba selecionada
+      let activeCategories = currentTab === 'TODOS' ? categories : categories.filter(c => c === currentTab);
+
+      const crimeContent = document.getElementById('crimeContent');
+      crimeContent.innerHTML = '';
+
+      let totalClusters = 0;
+
+      activeCategories.forEach(fato => {
+        const boList = fatoMap[fato];
+
+        // Cruzamento de entidades dentro deste Fato para criar subgrupos
+        const { clusters, standalone } = findClusters(boList);
+        totalClusters += clusters.length;
+
+        const categorySection = document.createElement('div');
+        categorySection.className = 'dark-card rounded-lg p-5 border border-slate-800';
+
+        let sectionHtml = `
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <h2 class="text-sm font-bold text-amber-400 flex items-center gap-2">
+              <i data-lucide="folder" class="w-4 h-4"></i> ${fato}
+              <span class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-normal">${boList.length} ocorrência(s)</span>
+            </h2>
+          </div>
+        `;
+
+        // Exibir Grupos/Séries de Golpes Identificados (Reincidências)
+        if (clusters.length > 0) {
+          sectionHtml += `<div class="mb-4 space-y-3">
+            <p class="text-xs font-semibold text-amber-400 flex items-center gap-1">
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> VÍNCULOS E REINCIDÊNCIAS IDENTIFICADAS:
+            </p>`;
+
+          clusters.forEach((cluster, idx) => {
+            sectionHtml += `
+              <div class="bg-amber-500/5 border border-amber-500/30 rounded-md p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <i data-lucide="link" class="w-3.5 h-3.5"></i> Padrão Detectado #${idx + 1} (${cluster.bos.length} BOs Conectados)
+                  </span>
+                  <div class="flex gap-1 flex-wrap">
+                    ${cluster.matchedEntities.map(e => `<span class="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded border border-amber-500/40">${e}</span>`).join('')}
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                  ${cluster.bos.map(bo => renderBOCard(bo, true)).join('')}
+                </div>
+              </div>
+            `;
+          });
+
+          sectionHtml += `</div>`;
+        }
+
+        // Exibir BOs Isolados (Sem reincidência direta identificada)
+        if (standalone.length > 0) {
+          if (clusters.length > 0) {
+            sectionHtml += `<p class="text-xs font-semibold text-slate-400 mb-3 mt-4">Outras Ocorrências nesta categoria:</p>`;
+          }
+          sectionHtml += `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            ${standalone.map(bo => renderBOCard(bo, false)).join('')}
+          </div>`;
+        }
+
+        categorySection.innerHTML = sectionHtml;
+        crimeContent.appendChild(categorySection);
+      });
+
+      document.getElementById('totalClustersCount').innerText = totalClusters;
+      lucide.createIcons();
+    }
+
+    // Algoritmo de Cruzamento e Agrupamento por Entidades Coincidentes
+    function findClusters(boList) {
+      const clusters = [];
+      const visited = new Set();
+
+      for (let i = 0; i < boList.length; i++) {
+        if (visited.has(i)) continue;
+
+        const currentCluster = [boList[i]];
+        const matchedEntities = new Set();
+
+        for (let j = i + 1; j < boList.length; j++) {
+          if (visited.has(j)) continue;
+
+          const match = checkMatches(boList[i], boList[j]);
+          if (match.hasMatch) {
+            currentCluster.push(boList[j]);
+            visited.add(j);
+            match.reasons.forEach(r => matchedEntities.add(r));
+          }
+        }
+
+        if (currentCluster.length > 1) {
+          visited.add(i);
+          clusters.push({
+            bos: currentCluster,
+            matchedEntities: Array.from(matchedEntities)
+          });
+        }
+      }
+
+      const standalone = boList.filter((_, idx) => !visited.has(idx));
+      return { clusters, standalone };
+    }
+
+    function checkMatches(bo1, bo2) {
+      const reasons = [];
+
+      // Cruzar Telefones
+      bo1.phones.forEach(p => {
+        if (bo2.phones.includes(p)) reasons.push(`Tel: ${p}`);
+      });
+
+      // Cruzar CPFs
+      bo1.cpfs.forEach(c => {
+        if (bo2.cpfs.includes(c)) reasons.push(`CPF: ${c}`);
+      });
+
+      return {
+        hasMatch: reasons.length > 0,
+        reasons
+      };
+    }
+
+    // Template para Card Individual de BO
+    function renderBOCard(bo, isClustered) {
+      return `
+        <div class="bg-slate-900/90 border ${isClustered ? 'border-amber-500/40' : 'border-slate-800'} rounded p-3 text-xs flex flex-col justify-between hover:border-slate-600 transition">
+          <div>
+            <div class="flex justify-between items-start mb-2">
+              <span class="font-bold text-slate-100 flex items-center gap-1">
+                <i data-lucide="file-text" class="w-3.5 h-3.5 text-amber-400"></i> BO: ${bo.boNumber}
+              </span>
+              <span class="text-[10px] text-slate-400">${bo.dataRegistro}</span>
+            </div>
+            
+            <div class="space-y-1 mb-2 text-[11px]">
+              ${bo.names.length ? `<p class="text-slate-300"><strong class="text-slate-400">Vítima/Envolvido:</strong> ${bo.names.join(', ')}</p>` : ''}
+              ${bo.phones.length ? `<p class="text-slate-300"><strong class="text-slate-400">Telefones:</strong> ${bo.phones.join(', ')}</p>` : ''}
+              ${bo.cpfs.length ? `<p class="text-slate-300"><strong class="text-slate-400">CPFs:</strong> ${bo.cpfs.join(', ')}</p>` : ''}
+              ${bo.pixMatches.length ? `<p class="text-amber-300/90"><strong class="text-slate-400">Menções a Val/Pix:</strong> ${bo.pixMatches.join(', ')}</p>` : ''}
+            </div>
+
+            <div class="bg-slate-950 p-2 rounded text-slate-400 text-[11px] line-clamp-3 italic">
+              "${bo.historico.substring(0, 180)}..."
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2 border-t border-slate-800 flex justify-between items-center text-[10px] text-slate-500">
+            <span>${bo.filename}</span>
+            <button onclick="alert(\`HISTÓRICO COMPLETO DO BO ${bo.boNumber}:\\n\\n${bo.historico.replace(/"/g, "'")}\`)" class="text-amber-400 hover:underline flex items-center gap-0.5">
+              Ver na íntegra <i data-lucide="chevron-right" class="w-3 h-3"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
